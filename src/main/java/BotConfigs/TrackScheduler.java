@@ -15,6 +15,7 @@ public class TrackScheduler extends AudioEventAdapter {
     private final BlockingQueue<AudioTrack> queue;
     private TextChannel notificationChannel;
     private AudioTrack currentTrack;
+    private boolean shouldNotifyNextTrack = true;
 
     public TrackScheduler(AudioPlayer player, TextChannel channel) {
         this.player = player;
@@ -27,9 +28,13 @@ public class TrackScheduler extends AudioEventAdapter {
     }
 
     public void play(AudioTrack track) {
-        currentTrack = track;
-        player.startTrack(track, false);
-        notifyNowPlaying(track);
+        try {
+            currentTrack = track;
+            player.startTrack(track, false);
+            notifyNowPlaying(track);
+        } catch (Exception e) {
+            notify("❌ Erro ao iniciar a reprodução: " + e.getMessage());
+        }
     }
 
     public void queue(AudioTrack track) {
@@ -42,13 +47,11 @@ public class TrackScheduler extends AudioEventAdapter {
     public void nextTrack() {
         currentTrack = queue.poll();
         player.startTrack(currentTrack, false);
-        if (currentTrack != null) {
-            notifyNowPlaying(currentTrack);
-        }
     }
 
     public void clearQueue() {
         queue.clear();
+        notify("🗑️ Fila de músicas limpa");
     }
 
     public BlockingQueue<AudioTrack> getQueue() {
@@ -59,11 +62,20 @@ public class TrackScheduler extends AudioEventAdapter {
         return currentTrack;
     }
 
+    public String getCurrentTrackInfo() {
+        return currentTrack != null ? 
+            String.format("🎶 **Tocando agora:** [%s](%s) `[%s]`",
+                currentTrack.getInfo().title,
+                currentTrack.getInfo().uri,
+                formatDuration(currentTrack.getDuration())) 
+            : "Nenhuma música tocando no momento";
+    }
+
     public String getQueueStatus() {
         StringBuilder sb = new StringBuilder();
         
         if (currentTrack != null) {
-            sb.append("🎶 **Tocando agora:** ").append(formatTrackInfo(currentTrack)).append("\n\n");
+            sb.append(getCurrentTrackInfo()).append("\n\n");
         }
         
         if (!queue.isEmpty()) {
@@ -86,25 +98,32 @@ public class TrackScheduler extends AudioEventAdapter {
     @Override
     public void onTrackStart(AudioPlayer player, AudioTrack track) {
         currentTrack = track;
-        notifyNowPlaying(track);
+        if (shouldNotifyNextTrack) {
+            notifyNowPlaying(track);
+        }
+        shouldNotifyNextTrack = true;
     }
 
     @Override
     public void onTrackEnd(AudioPlayer player, AudioTrack track, AudioTrackEndReason endReason) {
         if (endReason.mayStartNext) {
             nextTrack();
+        } else {
+            currentTrack = null;
         }
     }
 
     private void notifyNowPlaying(AudioTrack track) {
-        if (notificationChannel != null) {
-            notificationChannel.sendMessage("🎶 **Tocando agora:** " + formatTrackInfo(track)).queue();
-        }
+        notify("🎶 **Tocando agora:** " + formatTrackInfo(track));
     }
 
     private void notifyQueued(AudioTrack track) {
+        notify("📥 **Adicionado à fila (" + queue.size() + "):** " + formatTrackInfo(track));
+    }
+
+    private void notify(String message) {
         if (notificationChannel != null) {
-            notificationChannel.sendMessage("📥 **Adicionado à fila (" + queue.size() + "):** " + formatTrackInfo(track)).queue();
+            notificationChannel.sendMessage(message).queue();
         }
     }
 
@@ -119,4 +138,6 @@ public class TrackScheduler extends AudioEventAdapter {
         duration /= 1000;
         return String.format("%02d:%02d", duration / 60, duration % 60);
     }
+    
+    
 }

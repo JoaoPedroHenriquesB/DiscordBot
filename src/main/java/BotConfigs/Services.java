@@ -25,7 +25,7 @@ public class Services {
         List<CommandData> commands = new ArrayList<>();
         
         commands.add(Commands.slash("play", "Toca uma música do YouTube/Spotify")
-            .addOptions(new OptionData(OptionType.STRING, "url", "URL ou nome da música", true)));
+            .addOptions(new OptionData(OptionType.STRING, "query", "URL ou nome da música", true)));
         
         commands.add(Commands.slash("skip", "Pula a música atual"));
         commands.add(Commands.slash("pause", "Pausa a música atual"));
@@ -80,64 +80,87 @@ public class Services {
                     executeLittleCarl(event);
                     break;
                 default:
-                    event.reply("Comando não reconhecido").setEphemeral(true).queue();
+                    event.reply("❌ Comando não reconhecido").setEphemeral(true).queue();
             }
         } catch (Exception e) {
-            System.err.println("Erro ao executar comando " + commandName + ": " + e.getMessage());
-            event.reply("❌ Ocorreu um erro: " + e.getMessage()).setEphemeral(true).queue();
+            handleCommandError(event, commandName, e);
         }
     }
 
     private void executePlay(SlashCommandInteractionEvent event) {
-        String url = event.getOption("url").getAsString();
+        String query = event.getOption("query").getAsString().trim();
         
-        if (url.length() < 3) {
+        if (query.length() < 3) {
             event.reply("🔍 A busca deve ter pelo menos 3 caracteres").setEphemeral(true).queue();
             return;
         }
         
+        if (!verifyVoiceChannel(event, false)) return;
+        
         TextChannel textChannel = event.getChannel().asTextChannel();
         event.deferReply().queue(hook -> {
-            musicManager.loadAndPlay(event.getGuild(), url, textChannel, message -> {
-                hook.editOriginal(message)
-                    .setActionRow(
-                        Button.primary("skip", "⏭️ Pular"),
-                        Button.secondary("pause", "⏸️ Pausar"),
-                        Button.success("resume", "▶️ Retomar"),
-                        Button.danger("stop", "⏹️ Parar")
-                    ).queue();
+           
+            String processedInput = enhanceSearchQuery(query);
+            
+            musicManager.loadAndPlay(event.getGuild(), processedInput, textChannel, message -> {
+                if (message.startsWith("❌")) {
+                    hook.editOriginal(message).queue();
+                } else {
+                    hook.editOriginal(message)
+                        .setActionRow(
+                            Button.primary("skip", "⏭️ Pular"),
+                            Button.secondary("pause", "⏸️ Pausar"),
+                            Button.success("resume", "▶️ Retomar"),
+                            Button.danger("stop", "⏹️ Parar")
+                        ).queue();
+                }
             });
         });
     }
 
+    private String enhanceSearchQuery(String query) {
+        if (query.matches("^(https?|ftp|spotify)://.*$")) {
+            return query;
+        }
+        return "ytsearch:" + query + " official audio"; 
+    }
+
     private void executeSkip(SlashCommandInteractionEvent event) {
+        if (!verifyVoiceChannel(event, true)) return;
+        
         musicManager.skipTrack(event.getGuild());
         event.reply("⏭️ Pulando para a próxima música...").queue();
     }
 
     private void executePause(SlashCommandInteractionEvent event) {
+        if (!verifyVoiceChannel(event, true)) return;
+        
         musicManager.pause(event.getGuild());
         event.reply("⏸️ Música pausada").queue();
     }
 
     private void executeResume(SlashCommandInteractionEvent event) {
+        if (!verifyVoiceChannel(event, true)) return;
+        
         musicManager.resume(event.getGuild());
         event.reply("▶️ Música retomada").queue();
     }
 
     private void executeStop(SlashCommandInteractionEvent event) {
+        if (!verifyVoiceChannel(event, true)) return;
+        
         musicManager.stop(event.getGuild());
         event.reply("⏹️ Playback parado e fila limpa").queue();
     }
 
     private void executeQueue(SlashCommandInteractionEvent event) {
         String queueStatus = musicManager.getQueueStatus(event.getGuild());
-        event.reply(queueStatus).queue();
+        event.reply(queueStatus).setEphemeral(true).queue();
     }
 
     private void executeNowPlaying(SlashCommandInteractionEvent event) {
         String nowPlaying = musicManager.getNowPlaying(event.getGuild());
-        event.reply(nowPlaying).queue();
+        event.reply(nowPlaying).setEphemeral(true).queue();
     }
 
     private void executeJoin(SlashCommandInteractionEvent event) {
@@ -169,20 +192,51 @@ public class Services {
     
     private void executeLittleCarl(SlashCommandInteractionEvent event) {
         try {
-            File imageFile = new File("C:\\Users\\joaop\\Downloads\\DiscordBot\\src\\main\\resources\\carlinhos.webp");
+            File imageFile = new File("src/main/resources/carlinhos.webp");
             if (imageFile.exists()) {
-                event.reply("**Dalva sua vagabunda!**")
+                event.reply("**Aqui está o Carlinhos!**")
                      .addFiles(FileUpload.fromData(imageFile))
                      .queue();
             } else {
-                event.reply("A imagem não foi encontrada!")
+                event.reply("❌ A imagem não foi encontrada!")
                      .setEphemeral(true)
                      .queue();
             }
         } catch (Exception e) {
-            event.reply("Ocorreu um erro ao carregar a imagem: " + e.getMessage())
+            event.reply("❌ Ocorreu um erro ao carregar a imagem: " + e.getMessage())
                  .setEphemeral(true)
                  .queue();
         }
+    }
+
+    private boolean verifyVoiceChannel(SlashCommandInteractionEvent event, boolean checkBotConnection) {
+        if (!event.getMember().getVoiceState().inAudioChannel()) {
+            event.reply("❌ Você precisa estar em um canal de voz para usar este comando!")
+               .setEphemeral(true)
+               .queue();
+            return false;
+        }
+        
+        if (checkBotConnection && !event.getGuild().getAudioManager().isConnected()) {
+            event.reply("❌ Eu preciso estar conectado em um canal de voz primeiro!")
+               .setEphemeral(true)
+               .queue();
+            return false;
+        }
+        
+        return true;
+    }
+
+    private void handleCommandError(SlashCommandInteractionEvent event, String commandName, Exception e) {
+        System.err.println("Erro ao executar comando " + commandName + ": " + e.getMessage());
+        String errorMessage = "❌ Ocorreu um erro";
+        
+        if (e.getMessage().contains("No matches")) {
+            errorMessage = "❌ Nenhum resultado encontrado";
+        } else if (e.getMessage().contains("Loading failed")) {
+            errorMessage = "❌ Falha ao carregar a mídia";
+        }
+        
+        event.reply(errorMessage).setEphemeral(true).queue();
     }
 }
