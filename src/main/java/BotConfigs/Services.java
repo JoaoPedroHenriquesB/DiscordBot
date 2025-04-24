@@ -37,6 +37,8 @@ public class Services {
         commands.add(Commands.slash("leave", "Faz o bot sair do canal de voz"));
         commands.add(Commands.slash("hello", "Diz olá para você"));
         commands.add(Commands.slash("littlecarl", "Mostra uma imagem do Carlinhos"));
+        commands.add(Commands.slash("shuffle", "Embaralha a fila de música"));
+        commands.add(Commands.slash("ploop", "Toca uma música em loop"));
         
         return commands;
     }
@@ -79,6 +81,10 @@ public class Services {
                 case "littlecarl":
                     executeLittleCarl(event);
                     break;
+                case "shuffle":
+                	executeShuffle(event);
+                case "ploop":
+                	executePloop(event);
                 default:
                     event.reply("❌ Comando não reconhecido").setEphemeral(true).queue();
             }
@@ -88,18 +94,31 @@ public class Services {
     }
 
     private void executePlay(SlashCommandInteractionEvent event) {
-        String query = event.getOption("query").getAsString().trim();
+        if (!event.getMember().getVoiceState().inAudioChannel()) {
+            event.reply("❌ Você precisa estar em um canal de voz primeiro!").setEphemeral(true).queue();
+            return;
+        }
+
+        AudioChannel voiceChannel = event.getMember().getVoiceState().getChannel();
         
-        if (query.length() < 3) {
-            event.reply("🔍 A busca deve ter pelo menos 3 caracteres").setEphemeral(true).queue();
+        try {
+            event.getGuild().getAudioManager().openAudioConnection(voiceChannel);
+        } catch (Exception e) {
+            event.reply("❌ Não consegui entrar no canal de voz: " + e.getMessage())
+                 .setEphemeral(true)
+                 .queue();
             return;
         }
         
-        if (!verifyVoiceChannel(event, false)) return;
-        
+        if (event.getOption("query") == null) {
+            event.reply("❌ Por favor, forneça uma música ou URL").setEphemeral(true).queue();
+            return;
+        }
+
+        String query = event.getOption("query").getAsString();
         TextChannel textChannel = event.getChannel().asTextChannel();
+        
         event.deferReply().queue(hook -> {
-           
             String processedInput = enhanceSearchQuery(query);
             
             musicManager.loadAndPlay(event.getGuild(), processedInput, textChannel, message -> {
@@ -119,11 +138,12 @@ public class Services {
     }
 
     private String enhanceSearchQuery(String query) {
-        if (query.matches("^(https?|ftp|spotify)://.*$")) {
+        if (query.matches("^(https?|ftp|spotify)://.*$") || query.startsWith("ytsearch:")) {
             return query;
         }
         return "ytsearch:" + query + " official audio"; 
     }
+
 
     private void executeSkip(SlashCommandInteractionEvent event) {
         if (!verifyVoiceChannel(event, true)) return;
@@ -239,4 +259,28 @@ public class Services {
         
         event.reply(errorMessage).setEphemeral(true).queue();
     }
+    
+    private void executeShuffle(SlashCommandInteractionEvent event) {
+        if (!verifyVoiceChannel(event, true)) return;
+
+        GuildMusicManager guildMusicManager = musicManager.getGuildAudioPlayer(event.getGuild(), event.getChannel().asTextChannel());
+        guildMusicManager.scheduler.shuffleQueue();
+        
+        event.reply("🔀 Fila embaralhada!").queue();
+    }
+
+    
+    private void executePloop(SlashCommandInteractionEvent event) {
+        if (!verifyVoiceChannel(event, true)) return;
+
+        GuildMusicManager guildMusicManager = musicManager.getGuildAudioPlayer(event.getGuild(), event.getChannel().asTextChannel());
+        boolean loopState = guildMusicManager.scheduler.toggleLoop();
+
+        event.reply((loopState ? "🔁 Loop ativado!" : "➡️ Loop desativado.")).queue();
+    }
+    
+    
+    
+    
+    
 }

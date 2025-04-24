@@ -1,0 +1,12 @@
+server:
+  # Define the port where Lavalink will listen
+  port: 2333
+  # Define the password (requerido para conexões)
+  password: "youshallnotpass"
+
+youtube:
+  source: youtube
+  playlistLoadLimit: 6
+  allowSearch: true
+  allowDirectUrl: true
+  apiKey: "SUA_API_KEY_AQUI"

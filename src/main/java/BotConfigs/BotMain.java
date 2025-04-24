@@ -38,6 +38,8 @@ public class BotMain {
 
             jda.awaitReady();
             
+            jda.addEventListener(new ButtonListener(musicManager));
+            
             String botName = jda.getSelfUser().getGlobalName();
             if (botName == null) {
                 botName = jda.getSelfUser().getName();
