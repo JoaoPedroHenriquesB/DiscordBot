@@ -6,7 +6,6 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -89,6 +88,10 @@ public class Services {
 			case "littlecarl":
 				executeLittleCarl(event);
 				break;
+			case "userinfo":
+				executeUserInfo(event);
+				break;
+				
 			default:
 				event.reply("Comando não reconhecido").setEphemeral(true).queue();
 			}
@@ -190,32 +193,30 @@ public class Services {
 	public void executeUserInfo(SlashCommandInteractionEvent event) {
 		try {
 			
+	        if (event.getOption("user") == null) {
+	            event.reply("❌ Você precisa mencionar um usuário!").setEphemeral(true).queue();
+	            return;
+	        }
+	
 			User user = event.getOption("user").getAsUser();
 			
 			String isBot = user.isBot() ? "Sim" : "Não";
-
 			String serverUsername = user.getName();
-
 			String globalUsername = user.getName();
-
-			File pfp = File.createTempFile("avatar", ".png");
-
-			FileUtils.copyURLToFile(URL.of(URI.create(user.getAvatarUrl()), null), pfp);
-			String flags = user.getFlags().isEmpty() ? "Nenhuma"
-					: user.getFlags().toString().replace("[", "").replace("]", "").trim();
+			String flags = user.getFlags().isEmpty()? "Nenhuma":
+					user.getFlags().toString().replace("[", "").replace("]", "").trim();
 
 			LocalDateTime dateTimeCriado = user.getTimeCreated().toLocalDateTime();
+	        String accountCreatedDate = String.format("%02d/%02d/%d às %02d:%02d",
+	                dateTimeCriado.getDayOfMonth(),
+	                dateTimeCriado.getMonthValue(),
+	                dateTimeCriado.getYear(),
+	                dateTimeCriado.getHour(),
+	                dateTimeCriado.getMinute());
 			
-			int creationDay = dateTimeCriado.getDayOfMonth();
-			int creationMonth = dateTimeCriado.getMonthValue();
-			int creationYear = dateTimeCriado.getYear();
-			int creationHour = dateTimeCriado.getHour();
-			int creationMinutes = dateTimeCriado.getMinute();
-			
-			String accountCreatedDate = creationDay + "/" + creationMonth + "/" + creationYear + "às " + creationHour + ":" + creationMinutes;
 			
 			StringBuilder sb = new StringBuilder();
-			
+			sb.append("**Informações do Usuário**\n");
 			sb.append("Nome no servidor: " + serverUsername);
 			sb.append("\n");
 			sb.append("Nome global: " + globalUsername);
@@ -226,12 +227,25 @@ public class Services {
 			sb.append("\n");
 			sb.append("Conta criada em: " + accountCreatedDate);
 			
-			event.reply(sb.toString()).addFiles(FileUpload.fromData(pfp));
+			String avatarUrl = user.getEffectiveAvatarUrl() + "?size=1024";
+			
+			try {
+	            File pfp = File.createTempFile("avatar", ".png");
+	            FileUtils.copyURLToFile(new URL(avatarUrl), pfp);
+	            
+	            event.reply(sb.toString())
+	                .addFiles(FileUpload.fromData(pfp))
+	                .queue();
+	        } catch (Exception e) {
+	            event.reply(sb.toString() + "\n\n*Não foi possível carregar o avatar*")
+	                .queue();
+	        }
 
-		} catch (MalformedURLException e) {
-			return;
-		} catch (IOException e) {
-			return;
-		}
+	    } catch (Exception e) {
+	        System.err.println("Erro no comando userinfo: " + e.getMessage());
+	        event.reply("Ocorreu um erro ao obter as informações do usuário")
+	            .setEphemeral(true)
+	            .queue();
+	    }
 	}
 }
